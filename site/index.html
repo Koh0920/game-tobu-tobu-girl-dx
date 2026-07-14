@@ -69,11 +69,16 @@
         if (!emulator || emulator.started !== true) {
           ok = false;
         } else if (message.action === "pause") {
-          if (!emulator.paused) {
+          if (emulator.paused) {
+            // Only acknowledge an idempotent Ato-owned pause. A pause that
+            // predates this request belongs to the user and must not cause
+            // the parent to send a matching resume.
+            ok = pausedByAto;
+          } else {
             emulator.pause();
-            pausedByAto = true;
+            pausedByAto = emulator.paused === true;
+            ok = pausedByAto;
           }
-          ok = emulator.paused === true;
         } else {
           if (pausedByAto) emulator.play();
           pausedByAto = false;
