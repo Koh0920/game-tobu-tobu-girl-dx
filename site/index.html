@@ -27,5 +27,70 @@
   window.EJS_backgroundColor = "#0b0b12";
 </script>
 <script src="data/loader.js"></script>
+<script>
+  // Optional Ato live-continuation pause profile. No credentials cross this
+  // boundary; only the trusted parent console may pause/resume the emulator.
+  (() => {
+    const trustedParents = new Set([
+      "https://ato.run",
+      "https://app.ato.run",
+      "https://stg-app.ato.run",
+    ]);
+    let pausedByAto = false;
+
+    function trustedParent(origin) {
+      if (trustedParents.has(origin)) return true;
+      try {
+        const url = new URL(origin);
+        return (
+          (url.protocol === "http:" || url.protocol === "https:") &&
+          (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+        );
+      } catch (_) {
+        return false;
+      }
+    }
+
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      if (
+        event.source !== window.parent ||
+        !trustedParent(event.origin) ||
+        !message ||
+        message.type !== "ato.session-control.v1" ||
+        (message.action !== "pause" && message.action !== "resume") ||
+        typeof message.request_id !== "string" ||
+        message.request_id.length > 128
+      ) return;
+
+      const emulator = window.EJS_emulator;
+      let ok = false;
+      try {
+        if (!emulator || emulator.started !== true) {
+          ok = false;
+        } else if (message.action === "pause") {
+          if (!emulator.paused) {
+            emulator.pause();
+            pausedByAto = true;
+          }
+          ok = emulator.paused === true;
+        } else {
+          if (pausedByAto) emulator.play();
+          pausedByAto = false;
+          ok = true;
+        }
+      } catch (_) {
+        ok = false;
+      }
+
+      event.source.postMessage({
+        type: "ato.session-control.v1.ack",
+        action: message.action,
+        request_id: message.request_id,
+        ok,
+      }, event.origin);
+    });
+  })();
+</script>
 </body>
 </html>
